@@ -236,10 +236,10 @@ if __name__ == "__main__":
         link_dest = None
  
     #tmpdest = tempfile.mkdtemp(dir=destbase)
-    tmpdest = os.path.join(destbase , 'tmpdir')
-    os.mkdir(tmpdest)
+    #tmpdest = os.path.join(destbase , 'tmpdir')
+    #os.mkdir(tmpdest)
 
-    logger.info(f"Temporary backup destination {tmpdest}")
+    #logger.info(f"Temporary backup destination {tmpdest}")
 
     backup_errors=0
     for src_dir in source_dirs:
@@ -259,7 +259,8 @@ if __name__ == "__main__":
                 src_head,src_tail = os.path.split(src_head)
             
 
-            dest = tmpdest
+            #dest = tmpdest
+            dest = backup.path
             src = os.path.join(src_head,src_tail)
             if link_dest is None:
                 link_dest_dir = None
@@ -288,19 +289,24 @@ if __name__ == "__main__":
 
 
     if backup_errors>0:
-        logger.error(f"Errors during backup. Stop backup. Manually remove temporary dir {tmpdest}")
-    elif not args.dry_run:
-        logger.debug(f"Move temporary directory {tmpdest} to {backup.path}")
-        try:
-            os.rename(tmpdest,backup.path)
-        except OSError as e:
-            logger.error(f"Renaming failed with {e}")
+        logger.error(f"Errors during backup.")
+        if not args.dry_run:
+            logger.error(f"Manually inspect {backup.path} and remove manually (rm -r {backup.path})")
     else:
-        logger.info(f"Remove temporary directory {tmpdest}")
-        try:
-            shutil.rmtree(tmpdest)            
-        except:
-            logger.error(f"Error during removal of {tmpdest}. Remove manually.")
+        logger.info(f"Backup successful.")    
+            
+    # elif not args.dry_run:
+    #     logger.debug(f"Move temporary directory {tmpdest} to {backup.path}")
+    #     try:
+    #         os.rename(tmpdest,backup.path)
+    #     except OSError as e:
+    #         logger.error(f"Renaming failed with {e}")
+    # else:
+    #     logger.info(f"Remove temporary directory {tmpdest}")
+    #     try:
+    #         shutil.rmtree(tmpdest)            
+    #     except:
+    #         logger.error(f"Error during removal of {tmpdest}. Remove manually.")
         
 
 
