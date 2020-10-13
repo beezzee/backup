@@ -12,6 +12,8 @@ import re
 import tempfile
 import shutil
 
+import tabulate
+
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.DEBUG)
 
@@ -39,8 +41,24 @@ def __time_from_filestats__(path):
     return date
     
 def is_backup(path):
-    return __time_from_pathname__(path) is not None
+    if os.path.isdir(path):
+        if __time_from_pathname__(path) is not None:
+            return True
 
+    return False
+
+
+def tabulate_backups(backup_list):
+    headers = ["Directory","Creation Time","Delta"]
+    rows = []
+    last_time = datetime.datetime.fromtimestamp(0)
+    for b in backup_list:
+        rows += [(b.date.strftime(datestring),
+                  b.ctime().strftime(datestring),
+                  str(b.date-last_time))]
+        last_time = b.date
+    return tabulate.tabulate(rows,headers=headers)
+    
 
 
 @functools.total_ordering
@@ -235,6 +253,7 @@ if __name__ == "__main__":
     
     existing_backups.sort()
     logging.info(f"Found {len(existing_backups)} backups.")
+    print(tabulate_backups(existing_backups))
     for b in existing_backups:
         logger.debug(str(b))
 
