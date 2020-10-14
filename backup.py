@@ -142,12 +142,19 @@ def compile_rsync_command(src,dest,target_fst,dry_run=True,logfile=None,link_des
     rsync_filters = []
     #['--exclude=lost+found', '--exclude=.cache/']
 
-    rsync_options = ["--delete","--ignore-existing","--hard-links","--sparse"]
+    rsync_options = ["--ignore-existing","--hard-links","--sparse"]
+
+    #--delete is not required, because destination should be empty
+    #rsync_options += ["--delete"]
+
+    #print progress information and statistics
+    rsync_options += ["--info=stats2,progress2"]
 
     if target_fst == "NTFS":
-        #emulate --archive, but without --times --perms --owner --group
+        #emulate --archive, but without --perms --owner --group
         
-        rsync_options += ["--no-perms", "--no-owner", "--no-group"]
+        #rsync_options += ["--no-perms", "--no-owner", "--no-group"]
+        rsync_options += ["--times"]
 
         #preserve device and special files
         rsync_options += ["-D"]
