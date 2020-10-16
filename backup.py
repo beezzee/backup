@@ -14,6 +14,10 @@ import shutil
 
 import tabulate
 
+import yaml
+
+
+
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.DEBUG)
 
@@ -23,6 +27,83 @@ datestring = "%Y_%m_%d_%H_%M_%S"
 #python3 backup.py --sources C:\Users\peter.guenther\Documents\thesis_new --destination h:\backup\laptop --dry-run
 
 
+class Configuration(object):
+    """Manage configuration.
+
+    Merges options from command line and configuration file.
+    """
+    def __init__(self):
+        self.sources = []
+        self.destination = None
+        self.file_system = None
+        self.parser = None
+        self.config_file = None
+
+    def __str__(self):
+        return str( vars(self))
+            
+            
+    def _add_arguments(self):
+        """Add arguments to argument parser.
+
+        """
+        
+        #no mandatory arguments, because arguments may be read form file
+        #the argument names need to match the arguments of this class
+        parser.add_argument('--dry-run',action='store_true')
+        parser.add_argument('--file-system')
+        parser.add_argument('--sources',nargs='*',required=False,type=str)
+        parser.add_argument('--destination',type=str)
+        parser.add_argument('--config-file','-c',help="Path to YAML configuration")
+
+    def _parse_args(self):
+        if parser is None:
+            return
+        
+        args = parser.parse_args()
+
+        #convert arguments into dictionary
+        argsconfig = vars(args)
+        fileconfig = dict()
+        if args.config_file:
+            self.set_file(args.config_file)
+
+        if self.config_file is not None:
+            fileconfig = self._parse_file()
+            logger.debug(f"Configuration from file {fileconfig}")
+        #merge configurations, precedence from command line
+        config = fileconfig.copy()
+
+        logger.debug(f"Configuration from command line {argsconfig}")
+
+        #argparse sets non presen arguments to None, filter them out
+        #and update the remaining arguments 
+        config.update(filter(lambda x: x[1] is not None, argsconfig.items()))
+
+        #apply arguments
+        for k,v in config.items():
+            logger.debug(f"set {k} to {v}")
+            setattr(self, k, v)
+
+    def _parse_file(self):
+        logger.info(f"Parse configuration file {self.config_file}")
+        config = dict()
+        with open(self.config_file,'r') as fd:
+            config = yaml.safe_load(fd)
+
+        return config
+
+        
+    def set_parser(self,parser):
+        self.parser = parser
+        self._add_arguments()
+
+    def set_file(self,path):
+        self.config_file = path
+        
+    def evaluate(self):
+        self._parse_args()
+        
 def __time_from_pathname__(path):
     #get the name of the directory
     fbase = os.path.basename(path)
@@ -214,31 +295,33 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('--dry-run',action='store_true')
-    parser.add_argument('--target-fst',default='NTFS')
-    parser.add_argument('--sources',nargs='*',required=True,type=str)
-    parser.add_argument('--destination',nargs=1,required=True,type=str)
-
-    args = parser.parse_args()
-    source_dirs = args.sources
+    config = Configuration()
 
 
+    config.set_parser(parser)
+
+    #evaluate arguments and implicitly read configuation fiel
+    config.evaluate()
+
+    logger.debug(f"Configuration {config}")
     
-
-    target_fst = args.target_fst
-
+    
+    source_dirs = config.sources
+    target_fst = config.file_system
+    destbase = config.destination
 
     hostname=platform.node()
 
     now = datetime.datetime.now()
 
 
-    destbase = args.destination[0]
+    
+    
     logger.debug(f"Destination backup directory {destbase}")
     
     datedir = now.strftime(datestring)
 
-    if not os.path.isdir(destbase):
+    if destbase is None or not os.path.isdir(destbase):
         logging.error(f"The destination directory {destbase} does not exist or is not a direcotry.")   
         sys.exit()
     
@@ -318,7 +401,7 @@ if __name__ == "__main__":
                 #otherwise linking does not work
                 #link_dest_dir = os.path.join(link_dest,src_tail)
 
-            cmd=compile_backup_command(target_fst=args.target_fst,dry_run=args.dry_run,logfile=logfile,src=src,dest=dest,link_dest=link_dest_dir,thorough_check=first_backup_of_month)
+            cmd=compile_backup_command(target_fst=config.file_system,dry_run=config.dry_run,logfile=logfile,src=src,dest=dest,link_dest=link_dest_dir,thorough_check=first_backup_of_month)
 
 
             if errors>0:
