@@ -38,7 +38,11 @@ class Configuration(object):
         self.file_system = None
         self.parser = None
         self.config_file = None
-        
+
+    def __str__(self):
+        return str( vars(self))
+            
+            
     def _add_arguments(self):
         """Add arguments to argument parser.
 
@@ -66,19 +70,25 @@ class Configuration(object):
 
         if self.config_file is not None:
             fileconfig = self._parse_file()
-
+            logger.debug(f"Configuration from file {fileconfig}")
         #merge configurations, precedence from command line
         config = fileconfig.copy()
-        config.update(argsconfig)
+
+        logger.debug(f"Configuration from command line {argsconfig}")
+
+        #argparse sets non presen arguments to None, filter them out
+        #and update the remaining arguments 
+        config.update(filter(lambda x: x[1] is not None, argsconfig.items()))
 
         #apply arguments
         for k,v in config.items():
+            logger.debug(f"set {k} to {v}")
             setattr(self, k, v)
 
     def _parse_file(self):
-        logger.info(f"Parse configuration file {self.file}")
+        logger.info(f"Parse configuration file {self.config_file}")
         config = dict()
-        with open(self.file,'r') as fd:
+        with open(self.config_file,'r') as fd:
             config = yaml.safe_load(fd)
 
         return config
@@ -88,8 +98,8 @@ class Configuration(object):
         self.parser = parser
         self._add_arguments()
 
-    def set_file(self,file):
-        self.config_file = file
+    def set_file(self,path):
+        self.config_file = path
         
     def evaluate(self):
         self._parse_args()
@@ -292,6 +302,8 @@ if __name__ == "__main__":
 
     #evaluate arguments and implicitly read configuation fiel
     config.evaluate()
+
+    logger.debug(f"Configuration {config}")
     
     
     source_dirs = config.sources
@@ -309,7 +321,7 @@ if __name__ == "__main__":
     
     datedir = now.strftime(datestring)
 
-    if not os.path.isdir(destbase):
+    if destbase is None or not os.path.isdir(destbase):
         logging.error(f"The destination directory {destbase} does not exist or is not a direcotry.")   
         sys.exit()
     
