@@ -421,7 +421,7 @@ if __name__ == "__main__":
 
     if backup_errors>0:
         logger.error(f"Errors during backup.")
-        if not args.dry_run:
+        if not dry_run:
             logger.error(f"Manually inspect {backup.path} and remove manually (rm -r {backup.path})")
     else:
         logger.info(f"Backup successful.")    
