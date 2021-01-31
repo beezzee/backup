@@ -28,6 +28,20 @@ To generate a backup, we use the `rsync` tool. We provide a wrapper scrip for `r
 
 ### Collapsing differential backups
 
+To collapse all backups of 2017 to the first backup of this year, do
+
+```
+year=2017
+mkdir TRASH
+first=`ls -d ${year}*.log | head -n 1`
+for f in `ls -d ${year}*`;
+  do if [[ $f > $first ]]
+     then
+    	mv $f TRASH;
+     fi	
+  done
+```
+
 ### Branching off a new sequence
 
 Next we describe how to start a new differential backup relative to a snapshot `base` of
