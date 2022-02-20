@@ -22,7 +22,50 @@ We let `rsync --link-dest` do this job.
 
 ## Generating Backups
 
-To generate a backup, we use the `rsync` tool. We provide a wrapper scrip for `rsync` that manages search for the last backup, naming of new backups, and compiling the `rsync` command with the required parameters.
+To generate a backup, we use the `rsync` tool. We provide a wrapper
+scrip for `rsync` that manages search for the last backup, naming of
+new backups, and compiling the `rsync` command with the required
+parameters.
+
+### Filtering source folders
+
+To filter the backup source folder, we include a filter file provided
+by the `--filter-file` option. This file is passed to the `rsync`
+`--filter` option through the rsync `merge` filter rule. For more
+background, see the `rsync` man page, section `FILTER RULES`.
+
+The following filter file shows a very basic example, that includes
+the `/var`, `/etc`, `/root`, `/home/foo` folders, relative to the
+backup source folders (provided via the `--source`) option.  It
+excludes the contents of `.cache` folders under home directories and
+`/var/cache`.
+
+```
++ /var/
+- /var/cache/*
++ /etc/
++ /root/
++ /home/
++ /home/foo/
+- /home/*/.cache/*
+- /home/*
+- /*
+```
+
+Note: because filters are applied from root downwards, a directory
+up in the tree has to be explicitly included before it is excluded by
+subsequent filters. For example, we explicitly include the `/home`
+folder to be able to include the `/home/foo` folder. Otherwise, the
+`/*` filter would exclude the `/home` folder and hence, also
+`/home/foo` would be excluded as subfolder of `/home`. By adding
+`/home` before the `/*` exclude rule, the `/home` include rule takes
+precedence over excluding it through `/*`.  The `/home/*` exclude rule
+is for excluding all home folders except the explicitly included
+`/home/foo` folder.
+
+For more complex include and exclude patterns, for example
+per-directory filters, refer to the `FILTER RULES` section of the
+`rsync` man page.
 
 ## Managing Backups
 

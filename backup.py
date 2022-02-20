@@ -21,7 +21,7 @@ import yaml
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.DEBUG)
 
-datestring = "%Y_%m_%d_%H_%M_%S"
+datestring = "%Y-%m-%d_%H-%M-%S"
 
 #set PATH=%PATH%;C:\Users\peter.guenther\Documents\workspaces\HardLink\Hardlink\bin\Release
 #python3 backup.py --sources C:\Users\peter.guenther\Documents\thesis_new --destination h:\backup\laptop --dry-run
@@ -55,6 +55,8 @@ class Configuration(object):
         parser.add_argument('--sources',nargs='*',required=False,type=str)
         parser.add_argument('--destination',type=str)
         parser.add_argument('--config-file','-c',help="Path to YAML configuration")
+        parser.add_argument('--filter-file','-f',help="Filter file")
+        
 
     def _parse_args(self):
         if parser is None:
@@ -218,7 +220,7 @@ def execute_system_command(cmd):
     return completed_process
     
 
-def compile_rsync_command(src,dest,target_fst,dry_run=True,logfile=None,link_dest=None,thorough_check=False):
+def compile_rsync_command(src,dest,target_fst,dry_run=True,logfile=None,link_dest=None,thorough_check=False,filter_file=None):
     cmd=["rsync"]
     rsync_filters = []
     #['--exclude=lost+found', '--exclude=.cache/']
@@ -264,6 +266,10 @@ def compile_rsync_command(src,dest,target_fst,dry_run=True,logfile=None,link_des
     if thorough_check:
         cmd += ["--checksum"]
 
+    if filter_file is not None:
+        #include filter file via merge rule, convert to absolute path
+        cmd += ["--filter=merge " + str(pathlib.Path(filter_file).resolve())]
+        
     cmd+= [src_dir_normalized]
 
     #second positional argument of rsycn: dest
@@ -401,8 +407,7 @@ if __name__ == "__main__":
                 #otherwise linking does not work
                 #link_dest_dir = os.path.join(link_dest,src_tail)
 
-            cmd=compile_backup_command(target_fst=config.file_system,dry_run=config.dry_run,logfile=logfile,src=src,dest=dest,link_dest=link_dest_dir,thorough_check=first_backup_of_month)
-
+            cmd=compile_backup_command(target_fst=config.file_system,dry_run=config.dry_run,logfile=logfile,src=src,dest=dest,link_dest=link_dest_dir,thorough_check=first_backup_of_month,filter_file=config.filter_file)
 
             if errors>0:
                 logger.info("Skip rsync because errors happened.")
@@ -421,7 +426,7 @@ if __name__ == "__main__":
 
     if backup_errors>0:
         logger.error(f"Errors during backup.")
-        if not dry_run:
+        if not config.dry_run:
             logger.error(f"Manually inspect {backup.path} and remove manually (rm -r {backup.path})")
     else:
         logger.info(f"Backup successful.")    
