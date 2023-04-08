@@ -1,0 +1,10 @@
++ /var/
+- /var/cache/*
++ /etc/
++ /root/
++ /home/
++ /home/peter/
+- /home/*/.cache/*
+- /home/*
+- /*
+dir-merge rsync-filter
