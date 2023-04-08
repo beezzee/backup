@@ -38,7 +38,8 @@ class Configuration(object):
         self.file_system = None
         self.parser = None
         self.config_file = None
-
+        self.filter_file = None
+        
     def __str__(self):
         return str( vars(self))
             
