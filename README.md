@@ -121,6 +121,18 @@ find <backup_dir> -path etc/environment
 find <backup_dir> -samefile <reference_file>
 ```
 
+### Size of incremental backup
+
+To show the size of one snapshot, i.e., the space that would be freed if one snapshot is deleted:
+
+```
+find <snapshot-directory> -links 1 -type f -print0 |  du --files0-from=- --total -s  | tail -1
+```
+
+The `-links 1` option lists all regular files (`-type f`) that occur
+exclusively in the given directory `<snapshot-directory>`.
+
+
 ## Securing Backups
 
 In this section, we discuss how to secure a backup. The main goal is to prevent modification of backups from a potentially corrupted system. We implement the following measures:
