@@ -132,6 +132,14 @@ find <snapshot-directory> -links 1 -type f -print0 |  du --files0-from=- --total
 The `-links 1` option lists all regular files (`-type f`) that occur
 exclusively in the given directory `<snapshot-directory>`.
 
+### List files of backup, sorted by size
+
+List all files only referenced in one backup, sorted by size
+
+```
+find <snapshot-directory> -links 1 -type f -print0 |  du --files0-from=- --total -s  | sort -r -h
+```
+
 
 ## Securing Backups
 
