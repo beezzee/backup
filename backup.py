@@ -147,6 +147,7 @@ def tabulate_backups(backup_list):
 
 @functools.total_ordering
 class Backup:
+    TMP_EXT=".tmp"
     def __init__(self,path,date):
         self.path = path
         self.date = date
@@ -160,6 +161,10 @@ class Backup:
     def __eq__(self,other):
         return self.date == other.date and self.path == other.path
 
+    @property
+    def tmp_path(self):
+        return self.path.with_suffix(Backup.TMP_EXT)
+    
     def ctime(self):
         """Return ctime of this backup.
 
@@ -167,11 +172,18 @@ class Backup:
         On Unix, it is the time the directory metadata was modified.
         """
         return __time_from_filestats__(self.path)
-    
+
+    def commit(self):
+        d=self.path
+        p=pathlib.Path(self.tmp_path)
+        if d.exists():
+            raise FileExistsError(f"Destination path {d} exists")
+        p.rename(d)
+        
 
     @classmethod
     def from_path(cls,path):
-        date_from_path = __time_from_pathname__(path)
+        date_from_path = __time_from_pathname__(path.name)
         # date_from_filestats = __time_from_filestats__(path)
         # if abs(date_from_path-date_from_filestats)>datetime.timedelta(seconds=1):
         #     logger.warn(f"Discrepancy between creation time of directory ({date_from_filestats}) and directory name ({date_from_path})")
@@ -261,7 +273,7 @@ def compile_rsync_command(src,dest,target_fst,dry_run=True,logfile=None,link_des
     if dry_run:
         cmd += ["--dry-run"]
 
-    if link_dest is not None:
+    if link_dest is not None:            
         cmd+= ["--link-dest=" + link_dest ]
 
     if thorough_check:
@@ -333,7 +345,7 @@ if __name__ == "__main__":
         sys.exit()
     
   
-    destdir = os.path.join(destbase,datedir)
+    destdir = pathlib.Path(destbase,datedir)
     logging.debug(f"Destination directory {destdir}")
 
     backup = Backup(destdir,now)
@@ -345,7 +357,7 @@ if __name__ == "__main__":
             fbase = os.path.basename(fpath)
             logger.debug(f"Found directory {fbase} in backup destination.")
             if is_backup(fpath):
-                existing_backups.append(Backup.from_path(fpath))
+                existing_backups.append(Backup.from_path(pathlib.Path(fpath)))
 
     
     existing_backups.sort()
@@ -363,12 +375,19 @@ if __name__ == "__main__":
         last_backup = None
         first_backup_of_month = True
         
-    logfile = os.path.normpath(backup.path) + ".log"
+    #logfile = os.path.normpath(backup.path) + ".log"
+    logfile = str(backup.path.with_suffix(".log"))
     logger.info(f"Log to {logfile}")
 
     if last_backup is not None:
         #link_dest = os.path.normpath(last_backup.path + '/')
-        link_dest = os.path.normpath(last_backup.path)
+        #link_dest = os.path.normpath(last_backup.path)
+        link_dest = last_backup.path
+        if not link_dest.is_absolute():
+            #we searched for existing backups in destination directory
+            #rsync handles relative path as relative path to destination directory
+            link_dest = pathlib.Path("..") / link_dest.name
+
         logger.info(f"Create backup at {backup} relative to {last_backup}.")
     else:
         link_dest = None
@@ -398,12 +417,12 @@ if __name__ == "__main__":
             
 
             #dest = tmpdest
-            dest = backup.path
+            dest = str(backup.tmp_path)
             src = os.path.join(src_head,src_tail)
             if link_dest is None:
                 link_dest_dir = None
             else:
-                link_dest_dir = link_dest
+                link_dest_dir = str(link_dest)
                 #link dest needs to be parent of src_dir that we currently process
                 #otherwise linking does not work
                 #link_dest_dir = os.path.join(link_dest,src_tail)
@@ -428,9 +447,12 @@ if __name__ == "__main__":
     if backup_errors>0:
         logger.error(f"Errors during backup.")
         if not config.dry_run:
-            logger.error(f"Manually inspect {backup.path} and remove manually (rm -r {backup.path})")
+            logger.error(f"Manually inspect {backup.tmp_path} and remove manually (rm -r {backup.tmp_path})")
     else:
-        logger.info(f"Backup successful.")    
+        logger.info(f"Backup successful.")
+        if not config.dry_run:
+            logger.info(f"Move result to final destination {backup.path}")
+            backup.commit()
             
     # elif not args.dry_run:
     #     logger.debug(f"Move temporary directory {tmpdest} to {backup.path}")
