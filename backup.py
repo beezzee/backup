@@ -1,10 +1,10 @@
 import argparse
+import functools
 import logging
 import platform
 import os
 import os.path
 import pathlib
-import functools
 import subprocess
 import datetime
 import sys
@@ -155,9 +155,17 @@ def tabulate_backups(backup_list):
     
 
 
+def with_suffix(suffix):
+    def decorator_with_suffix(func):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            return func(*args, **kwargs).with_suffix(suffix)
+
+        return wrapper
+    return decorator_with_suffix
+
 @functools.total_ordering
-class Backup:
-    TMP_EXT=".tmp"
+class Backup:   
     def __init__(self,destbase,date):
         datedir = date.strftime(datestring)
         self.path = pathlib.Path(destbase,datedir)
@@ -173,9 +181,16 @@ class Backup:
         return self.date == other.date and self.path == other.path
 
     @property
+    @with_suffix(".tmp")
     def tmp_path(self):
-        return self.path.with_suffix(Backup.TMP_EXT)
+        return self.path
     
+    @property
+    @with_suffix(".log")
+    def log_path(self):
+        return self.path
+
+    @property
     def ctime(self):
         """Return ctime of this backup.
 
@@ -185,12 +200,11 @@ class Backup:
         return __time_from_filestats__(self.path)
 
     def commit(self):
-        d=self.path
-        p=pathlib.Path(self.tmp_path)
+        d = self.path
+        p = pathlib.Path(self.tmp_path)
         if d.exists():
             raise FileExistsError(f"Destination path {d} exists")
         p.rename(d)
-        
 
     @classmethod
     def from_path(cls,path):
@@ -369,8 +383,7 @@ def backup(config):
         last_backup = None
         first_backup_of_month = True
         
-    #logfile = os.path.normpath(backup.path) + ".log"
-    logfile = str(backup.path.with_suffix(".log"))
+    logfile = str(backup.log_path)
     logger.info(f"Log to {logfile}")
 
     if last_backup is not None:
