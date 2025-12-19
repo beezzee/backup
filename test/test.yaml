@@ -7,4 +7,6 @@
 destination: dest
 sources:
    - src/dir1
+   - src/dir2
+   
 
