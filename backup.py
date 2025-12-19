@@ -32,6 +32,7 @@ class Configuration(object):
 
     Merges options from command line and configuration file.
     """
+
     def __init__(self):
         self.sources = []
         self.destination = None
@@ -40,7 +41,7 @@ class Configuration(object):
         self.config_file = None
         self.filter_file = None
         self.func = None
-        
+
     def __str__(self):
         return str( vars(self))
             
@@ -308,7 +309,7 @@ def compile_hardlink_command(src,dest,target_fst,dry_run=True,logfile=None,link_
 
     cmd += ["HardLink"]
 
-    cmd += [f"--source-folder",src]
+    cmd += [f"--source-folder", src]
     cmd += [f"--destination",dest]
     if link_dest is not None:
         cmd += [f"--link-dest",link_dest]
@@ -473,13 +474,11 @@ if __name__ == "__main__":
     parser_backup = subparsers.add_parser('backup')
     parser_backup.set_defaults(func=backup)
     
-
     config = Configuration()
-
 
     config.set_parser(parser)
 
-    #evaluate arguments and implicitly read configuation fiel
+    # evaluate arguments and implicitly read configuation field
     config.evaluate()
 
     logger.debug(f"Configuration {config}")
