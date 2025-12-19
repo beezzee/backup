@@ -32,6 +32,7 @@ class Configuration(object):
 
     Merges options from command line and configuration file.
     """
+
     def __init__(self):
         self.sources = []
         self.destination = None
@@ -39,7 +40,8 @@ class Configuration(object):
         self.parser = None
         self.config_file = None
         self.filter_file = None
-        
+        self.func = None
+
     def __str__(self):
         return str( vars(self))
             
@@ -87,6 +89,8 @@ class Configuration(object):
         for k,v in config.items():
             logger.debug(f"set {k} to {v}")
             setattr(self, k, v)
+            
+        self.func = args.func
 
     def _parse_file(self):
         logger.info(f"Parse configuration file {self.config_file}")
@@ -106,6 +110,9 @@ class Configuration(object):
         
     def evaluate(self):
         self._parse_args()
+        
+    def execute(self):
+        self.func(self)
         
 def __time_from_pathname__(path):
     #get the name of the directory
@@ -131,6 +138,9 @@ def is_backup(path):
 
     return False
 
+def is_tmp(path):
+    root,ext = os.path.splitext(path)
+    return ext == ".tmp" and is_backup(root)
 
 def tabulate_backups(backup_list):
     headers = ["Directory","Creation Time","Delta"]
@@ -148,8 +158,9 @@ def tabulate_backups(backup_list):
 @functools.total_ordering
 class Backup:
     TMP_EXT=".tmp"
-    def __init__(self,path,date):
-        self.path = path
+    def __init__(self,destbase,date):
+        datedir = date.strftime(datestring)
+        self.path = pathlib.Path(destbase,datedir)
         self.date = date
 
     def __str__(self):
@@ -188,7 +199,7 @@ class Backup:
         # if abs(date_from_path-date_from_filestats)>datetime.timedelta(seconds=1):
         #     logger.warn(f"Discrepancy between creation time of directory ({date_from_filestats}) and directory name ({date_from_path})")
         #     logger.warn("Take date from pathname")
-        return cls(path,date_from_path)
+        return cls(path.parent,date_from_path)
 
 
 def unify_path(path,drive_prefix='\cygdrive'):
@@ -283,7 +294,7 @@ def compile_rsync_command(src,dest,target_fst,dry_run=True,logfile=None,link_des
         #include filter file via merge rule, convert to absolute path
         cmd += ["--filter=merge " + str(pathlib.Path(filter_file).resolve())]
         
-    cmd+= [src_dir_normalized]
+    cmd+= [src]
 
     #second positional argument of rsycn: dest
     #backup_path_unified = unify_path(backup.path)
@@ -298,7 +309,7 @@ def compile_hardlink_command(src,dest,target_fst,dry_run=True,logfile=None,link_
 
     cmd += ["HardLink"]
 
-    cmd += [f"--source-folder",src]
+    cmd += [f"--source-folder", src]
     cmd += [f"--destination",dest]
     if link_dest is not None:
         cmd += [f"--link-dest",link_dest]
@@ -309,22 +320,26 @@ def compile_hardlink_command(src,dest,target_fst,dry_run=True,logfile=None,link_
 #compile_backup_command=compile_hardlink_command
 compile_backup_command=compile_rsync_command
 
-if __name__ == "__main__":
-    errors = 0
 
-    parser = argparse.ArgumentParser()
+def yield_backups(destbase):
+    if destbase is None or not os.path.isdir(destbase):
+        logging.error(f"The destination directory {destbase} does not exist or is not a directory.")   
+        raise ValueError from None
+        
+    for f in os.listdir(destbase):
+        fpath = os.path.join(destbase,f)
+        if os.path.isdir(fpath):
+            fbase = os.path.basename(fpath)
+            logger.debug(f"Found directory {fbase} in backup destination.")
+            if is_backup(fpath):
+                logger.debug(f"Accept as backup")
+                yield Backup.from_path(pathlib.Path(fpath))
 
-    config = Configuration()
+def list_backups(config):
+    logger.debug(f"List backups in {config.destination}.")
+    print(tabulate_backups(sorted(yield_backups(config.destination))))
 
-
-    config.set_parser(parser)
-
-    #evaluate arguments and implicitly read configuation fiel
-    config.evaluate()
-
-    logger.debug(f"Configuration {config}")
-    
-    
+def backup(config):
     source_dirs = config.sources
     target_fst = config.file_system
     destbase = config.destination
@@ -333,36 +348,15 @@ if __name__ == "__main__":
 
     now = datetime.datetime.now()
 
-
-    
-    
     logger.debug(f"Destination backup directory {destbase}")
-    
-    datedir = now.strftime(datestring)
+      
 
-    if destbase is None or not os.path.isdir(destbase):
-        logging.error(f"The destination directory {destbase} does not exist or is not a direcotry.")   
-        sys.exit()
-    
-  
-    destdir = pathlib.Path(destbase,datedir)
-    logging.debug(f"Destination directory {destdir}")
-
-    backup = Backup(destdir,now)
-
-    existing_backups = []
-    for f in os.listdir(destbase):
-        fpath = os.path.join(destbase,f)
-        if os.path.isdir(fpath):
-            fbase = os.path.basename(fpath)
-            logger.debug(f"Found directory {fbase} in backup destination.")
-            if is_backup(fpath):
-                existing_backups.append(Backup.from_path(pathlib.Path(fpath)))
-
+    backup = Backup(destbase,now)
+    logging.debug(f"Destination directory {backup.path}")
+    existing_backups = list(yield_backups(destbase))
     
     existing_backups.sort()
     logging.info(f"Found {len(existing_backups)} backups.")
-    print(tabulate_backups(existing_backups))
     for b in existing_backups:
         logger.debug(str(b))
 
@@ -467,5 +461,29 @@ if __name__ == "__main__":
     #     except:
     #         logger.error(f"Error during removal of {tmpdest}. Remove manually.")
         
+  
+
+if __name__ == "__main__":
+    errors = 0
+
+    parser = argparse.ArgumentParser()
+    subparsers = parser.add_subparsers(required=True)
+    parser_list = subparsers.add_parser('list-backups')
+    parser_list.set_defaults(func=list_backups)
+    
+    parser_backup = subparsers.add_parser('backup')
+    parser_backup.set_defaults(func=backup)
+    
+    config = Configuration()
+
+    config.set_parser(parser)
+
+    # evaluate arguments and implicitly read configuation field
+    config.evaluate()
+
+    logger.debug(f"Configuration {config}")
+    
+    config.execute()
+    
 
 

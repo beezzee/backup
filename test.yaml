@@ -4,9 +4,9 @@
 # currently multiple files separated by --- (YAML new document) are not supported.
 
 # first backup
-destination: dest
+destination: /mnt/backup/backup/test
 sources:
-   - src/dir1
-   - src/dir2
+   - /etc
+
    
 
