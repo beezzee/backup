@@ -1,10 +1,11 @@
 import argparse
+import functools
+import json
 import logging
 import platform
 import os
 import os.path
 import pathlib
-import functools
 import subprocess
 import datetime
 import sys
@@ -41,6 +42,12 @@ class Configuration(object):
         self.config_file = None
         self.filter_file = None
         self.func = None
+        
+    @property
+    def meta(self):
+        meta_properties=['sources','destination','config_file','filter_file','file_system']
+        return {k:v for k,v in   self.__dict__.items() if k in meta_properties}
+    
 
     def __str__(self):
         return str( vars(self))
@@ -148,20 +155,33 @@ def tabulate_backups(backup_list):
     last_time = datetime.datetime.fromtimestamp(0)
     for b in backup_list:
         rows += [(b.date.strftime(datestring),
-                  b.ctime().strftime(datestring),
+                  b.ctime.strftime(datestring),
                   str(b.date-last_time))]
         last_time = b.date
     return tabulate.tabulate(rows,headers=headers)
     
 
 
+def with_suffix(suffix):
+    def decorator_with_suffix(func):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            return func(*args, **kwargs).with_suffix(suffix)
+
+        return wrapper
+    return decorator_with_suffix
+
+
+def format_date(date):
+    return date.strftime(datestring)
+
 @functools.total_ordering
-class Backup:
-    TMP_EXT=".tmp"
-    def __init__(self,destbase,date):
-        datedir = date.strftime(datestring)
+class Backup:   
+    def __init__(self,destbase,date,link_dest):
+        datedir = format_date(date)
         self.path = pathlib.Path(destbase,datedir)
         self.date = date
+        self.link_dest = link_dest
 
     def __str__(self):
         return f"Backup from {self.date} @ {self.path}"
@@ -173,9 +193,21 @@ class Backup:
         return self.date == other.date and self.path == other.path
 
     @property
+    @with_suffix(".tmp")
     def tmp_path(self):
-        return self.path.with_suffix(Backup.TMP_EXT)
+        return self.path
     
+    @property
+    @with_suffix(".log")
+    def log_path(self):
+        return self.path
+    
+    @property
+    @with_suffix(".json")
+    def meta_path(self):
+        return self.path
+
+    @property
     def ctime(self):
         """Return ctime of this backup.
 
@@ -185,12 +217,12 @@ class Backup:
         return __time_from_filestats__(self.path)
 
     def commit(self):
-        d=self.path
-        p=pathlib.Path(self.tmp_path)
+        d = self.path
+        p = pathlib.Path(self.tmp_path)
         if d.exists():
             raise FileExistsError(f"Destination path {d} exists")
         p.rename(d)
-        
+ 
 
     @classmethod
     def from_path(cls,path):
@@ -199,7 +231,8 @@ class Backup:
         # if abs(date_from_path-date_from_filestats)>datetime.timedelta(seconds=1):
         #     logger.warn(f"Discrepancy between creation time of directory ({date_from_filestats}) and directory name ({date_from_path})")
         #     logger.warn("Take date from pathname")
-        return cls(path.parent,date_from_path)
+        return cls(path.parent,date_from_path,None)
+
 
 
 def unify_path(path,drive_prefix='\cygdrive'):
@@ -349,12 +382,9 @@ def backup(config):
     now = datetime.datetime.now()
 
     logger.debug(f"Destination backup directory {destbase}")
-      
+        
+    existing_backups = list(yield_backups(destbase))  
 
-    backup = Backup(destbase,now)
-    logging.debug(f"Destination directory {backup.path}")
-    existing_backups = list(yield_backups(destbase))
-    
     existing_backups.sort()
     logging.info(f"Found {len(existing_backups)} backups.")
     for b in existing_backups:
@@ -368,9 +398,11 @@ def backup(config):
         logger.info("No backups existing yet.")
         last_backup = None
         first_backup_of_month = True
-        
-    #logfile = os.path.normpath(backup.path) + ".log"
-    logfile = str(backup.path.with_suffix(".log"))
+      
+    backup = Backup(destbase,now,last_backup)
+    logging.debug(f"Destination directory {backup.path}")
+      
+    logfile = str(backup.log_path)
     logger.info(f"Log to {logfile}")
 
     if last_backup is not None:
@@ -382,7 +414,7 @@ def backup(config):
             #rsync handles relative path as relative path to destination directory
             link_dest = pathlib.Path("..") / link_dest.name
 
-        logger.info(f"Create backup at {backup} relative to {last_backup}.")
+        logger.info(f"Create backup at {backup} relative to {last_backup.path}.")
     else:
         link_dest = None
  
@@ -393,6 +425,17 @@ def backup(config):
     #logger.info(f"Temporary backup destination {tmpdest}")
 
     backup_errors=0
+    
+    
+    meta = dict()
+    meta["date"] = format_date(backup.date)
+    meta["path"] = str(backup.path)
+    meta["link_dest"] = str(backup.link_dest.path)
+    meta["log_file"] = logfile
+    meta["configuration"] = config.meta
+    meta["commands"] = []
+
+    
     for src_dir in source_dirs:
         if os.path.isdir(src_dir):
             logging.info(f"Backup {src_dir}...")
@@ -422,7 +465,8 @@ def backup(config):
                 #link_dest_dir = os.path.join(link_dest,src_tail)
 
             cmd=compile_backup_command(target_fst=config.file_system,dry_run=config.dry_run,logfile=logfile,src=src,dest=dest,link_dest=link_dest_dir,thorough_check=first_backup_of_month,filter_file=config.filter_file)
-
+            meta["commands"].append(" ".join(cmd))
+            
             if errors>0:
                 logger.info("Skip rsync because errors happened.")
             # elif args.dry_run:
@@ -447,6 +491,9 @@ def backup(config):
         if not config.dry_run:
             logger.info(f"Move result to final destination {backup.path}")
             backup.commit()
+            
+    with open(backup.meta_path,"w") as fp:
+        json.dump(meta,fp,skipkeys=True) 
             
     # elif not args.dry_run:
     #     logger.debug(f"Move temporary directory {tmpdest} to {backup.path}")
@@ -485,5 +532,3 @@ if __name__ == "__main__":
     
     config.execute()
     
-
-
